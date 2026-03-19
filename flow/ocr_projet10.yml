@@ -1,0 +1,20 @@
+#kestra 
+id: etl_data_pipeline
+namespace: data_pipeline
+description: "OCR projet 10 : Data Pipeline for Wine Sales"
+
+variables:
+  folder: "/data/temp"  #A adapter 
+
+tasks:
+  - id: log_start
+    type: io.kestra.plugin.core.log.Log
+    message: "✅ Début du pipeline ETL"
+
+  - id: read_erp
+    type: io.kestra.plugin.jdbc.duckdb.Query
+    sql: "SELECT * FROM read_parquet('{{ vars.folder }}/erp_raw.parquet')"
+
+  - id: log_erp
+    type: io.kestra.plugin.core.log.Log
+    message: "Lignes lues : {{ outputs.read_erp.rows | length }}"
