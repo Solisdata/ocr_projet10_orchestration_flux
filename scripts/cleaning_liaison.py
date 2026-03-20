@@ -16,24 +16,34 @@ con = duckdb.connect(database=':memory:')
 # ----------------------------
 print("🔹 Cleaning link_raw...")
 
+raw_before = con.execute(f"""
+SELECT 
+    COUNT(*) AS total_raw
+FROM read_parquet('{raw_file}')
+""").fetchone()
+
+print(f"Total rows before cleaning: {raw_before[0]}")
+
 con.execute(f"""
 CREATE OR REPLACE TABLE link_clean AS
 SELECT
     TRY_CAST(product_id AS INTEGER) AS product_id,
     TRY_CAST(id_web AS INTEGER) AS id_web,
-FROM read_parquet('{raw_file}');
+FROM read_parquet('{raw_file}')
+WHERE product_id IS NOT NULL
+  AND id_web IS NOT NULL;
 """)
 
-# # Stats
-# stats = con.execute("""
-# SELECT 
-#     COUNT(*) AS total_raw,
-#     COUNT(product_id) AS valid_product_id,
-#     COUNT(*) - COUNT(product_id) AS rejected_product_id
-# FROM link_clean
-# """).fetchone()
+# Stats after cleaning
 
-# print(f"Total rows: {stats[0]}, valid product_id: {stats[1]}, rejected: {stats[2]}")
+stats = con.execute("""
+SELECT 
+    COUNT(*) AS total_raw
+FROM link_clean
+""").fetchone()
+
+removed = raw_before[0] - stats[0]
+print(f"Total rows after cleaning: {stats[0]}, rejected: {removed}")
 
 # Export clean
 con.execute(f"COPY link_clean TO '{clean_file}' (FORMAT PARQUET)")
@@ -55,15 +65,15 @@ FROM (
 WHERE rn = 1;
 """)
 
-# Stats dedup
-# dedup_stats = con.execute("""
-# SELECT COUNT(*) AS total_dedup FROM link_dedup
-# """).fetchone()
-# removed = stats[1] - dedup_stats[0]
+#Stats dedup
+dedup_stats = con.execute("""
+SELECT COUNT(*) AS total_dedup FROM link_dedup
+""").fetchone()
+removed = stats[0] - dedup_stats[0]
 
-# print(f"Rows after dedup: {dedup_stats[0]}, duplicates removed: {removed}")
+print(f"Rows after dedup: {dedup_stats[0]}, duplicates removed: {removed}")
 
-# Export dedup
+#Export dedup
 con.execute(f"COPY link_dedup TO '{dedup_file}' (FORMAT PARQUET)")
 
 print("✅ Pipeline link_local terminé.")

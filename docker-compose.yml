@@ -32,7 +32,7 @@ services:
       - kestra-data:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/kestra-wd:/tmp/kestra-wd*
-      - C:/Users/mathi/Documents/8_OCR/Projet_10/temp:/data/temp 
+      - C:/Users/mathi/Documents/8_OCR/Projet_10/data:/app/data
     environment:
       KESTRA_AUTH_DISABLED: "true"
       KESTRA_CONFIGURATION: |
