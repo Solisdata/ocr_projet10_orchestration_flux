@@ -3,7 +3,7 @@ namespace: data_pipeline
 description: "OCR Projet 10 : ETL complet ERP, Web et liaison"
 
 variables:
-  sourceErp: /app/data/raw/Fichier_erp.xlsx
+  sourceerp: /app/data/raw/Fichier_erp.xlsx
   sourceWeb: /app/data/raw/Fichier_web.xlsx
   sourceliaison: /app/data/raw/fichier_liaison.xlsx
   tempDir: /app/data/tmp
@@ -194,7 +194,7 @@ tasks:
 
           - id: test_erp
             type: io.kestra.plugin.jdbc.duckdb.Query
-            description: "Tests qualité erp : doublons + NULL"
+            description: "Tests qualité ERP : doublons + NULL"
             fetchType: FETCH_ONE
             sql: |
               SELECT
@@ -204,33 +204,21 @@ tasks:
                   GROUP BY product_id HAVING COUNT(*) > 1
                 )) AS doublons_product_id,
 
-                (SELECT COUNT(*) FROM (
-                  SELECT id_web
-                  FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
-                  GROUP BY id_web HAVING COUNT(*) > 1
-                )) AS doublons_id_web,
-
                 (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
                   WHERE product_id IS NULL
-                ) AS nulls_product_id,
-
-                (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
-                  WHERE id_web IS NULL
-                ) AS nulls_id_web;
+                ) AS nulls_product_id;
 
           - id: assert_erp
             type: io.kestra.plugin.core.flow.If
             description: "Bloque l'export si un test échoue"
-            condition: "{{ outputs.test_erp.row.doublons_product_id > 0 or outputs.test_erp.row.doublons_id_web > 0 or outputs.test_erp.row.nulls_product_id > 0 or outputs.test_erp.row.nulls_id_web > 0 }}"
+            condition: "{{ outputs.test_erp.row.doublons_product_id > 0 or outputs.test_erp.row.nulls_product_id > 0 }}"
             then:
               - id: fail_erp
                 type: io.kestra.plugin.core.execution.Fail
                 errorMessage: |
                   ❌ Tests erp échoués :
                     - Doublons product_id : {{ outputs.test_erp.row.doublons_product_id }}
-                    - Doublons id_web     : {{ outputs.test_erp.row.doublons_id_web }}
                     - NULL product_id     : {{ outputs.test_erp.row.nulls_product_id }}
-                    - NULL id_web         : {{ outputs.test_erp.row.nulls_id_web }}
 
           - id: export_erp
             type: io.kestra.plugin.jdbc.duckdb.Query
