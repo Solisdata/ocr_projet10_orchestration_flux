@@ -80,43 +80,26 @@ tasks:
 
           - id: test_liaison
             type: io.kestra.plugin.jdbc.duckdb.Query
-            description: "Tests qualité liaison : doublons + NULL"
+            description: "Tests qualité liaison : doublons sur ligne complète"
             fetchType: FETCH_ONE
             sql: |
               SELECT
-                (SELECT COUNT(*) FROM (
-                  SELECT product_id
-                  FROM read_parquet('{{ vars.tempDir }}/liaison_dedup.parquet')
-                  GROUP BY product_id HAVING COUNT(*) > 1
-                )) AS doublons_product_id,
-
-                (SELECT COUNT(*) FROM (
-                  SELECT id_web
-                  FROM read_parquet('{{ vars.tempDir }}/liaison_dedup.parquet')
-                  GROUP BY id_web HAVING COUNT(*) > 1
-                )) AS doublons_id_web,
-
-                (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/liaison_dedup.parquet')
-                  WHERE product_id IS NULL
-                ) AS nulls_product_id,
-
-                (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/liaison_dedup.parquet')
-                  WHERE id_web IS NULL
-                ) AS nulls_id_web;
+                COUNT(*) FILTER (WHERE cnt > 1) AS doublons_lignes
+              FROM (
+                SELECT *, COUNT(*) OVER (PARTITION BY product_id, id_web) AS cnt
+                FROM read_parquet('{{ vars.tempDir }}/liaison_dedup.parquet')
+              ) sub;
 
           - id: assert_liaison
             type: io.kestra.plugin.core.flow.If
-            description: "Bloque l'export si un test échoue"
-            condition: "{{ outputs.test_liaison.row.doublons_product_id > 0 or outputs.test_liaison.row.doublons_id_web > 0 or outputs.test_liaison.row.nulls_product_id > 0 or outputs.test_liaison.row.nulls_id_web > 0 }}"
+            description: "Bloque l'export si des doublons détectés"
+            condition: "{{ outputs.test_liaison.row.doublons_lignes > 0 }}"
             then:
               - id: fail_liaison
                 type: io.kestra.plugin.core.execution.Fail
                 errorMessage: |
                   ❌ Tests liaison échoués :
-                    - Doublons product_id : {{ outputs.test_liaison.row.doublons_product_id }}
-                    - Doublons id_web     : {{ outputs.test_liaison.row.doublons_id_web }}
-                    - NULL product_id     : {{ outputs.test_liaison.row.nulls_product_id }}
-                    - NULL id_web         : {{ outputs.test_liaison.row.nulls_id_web }}
+                    - Lignes doublons : {{ outputs.test_liaison.row.doublons_lignes }}   
 
           - id: export_liaison
             type: io.kestra.plugin.jdbc.duckdb.Query
