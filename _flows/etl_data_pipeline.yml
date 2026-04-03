@@ -9,6 +9,14 @@ variables:
   tempDir: /app/data/tmp
   outputDir: /app/data/output
 
+pluginDefaults:
+  - type: io.kestra.plugin.jdbc.duckdb.Query
+    values:
+      retry:
+        type: constant
+        maxAttempt: 3
+        interval: PT5S
+
 errors:
   - id: pipeline_failed
     type: io.kestra.plugin.core.log.Log
@@ -297,3 +305,9 @@ tasks:
       📊 Liaison : {{ outputs.count_clean_liaison.row.nb_lignes_clean }} lignes exportées
       ERP : {{ outputs.count_clean_erp.row.nb_lignes_clean }} lignes exportées
       WEB : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes exportées
+
+
+triggers:
+  - id: monthly_schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 9 15 * *"
