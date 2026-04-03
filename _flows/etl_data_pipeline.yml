@@ -225,11 +225,12 @@ tasks:
 
           - id: clean_web
             type: io.kestra.plugin.jdbc.duckdb.Query
-            description: "Dédoublonnage web"
+            description: "Dédoublonnage et filtrage web"
             sql: |
               COPY (
                 SELECT DISTINCT *
                 FROM read_parquet('{{ vars.tempDir }}/web_raw.parquet')
+                WHERE post_type = 'product'
               ) TO '{{ vars.tempDir }}/web_dedup.parquet' (FORMAT PARQUET);
 
           - id: count_clean_web
