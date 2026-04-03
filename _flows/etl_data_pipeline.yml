@@ -231,6 +231,7 @@ tasks:
                 SELECT DISTINCT *
                 FROM read_parquet('{{ vars.tempDir }}/web_raw.parquet')
                 WHERE post_type = 'product'
+                AND sku IS NOT NULL
               ) TO '{{ vars.tempDir }}/web_dedup.parquet' (FORMAT PARQUET);
 
           - id: count_clean_web
