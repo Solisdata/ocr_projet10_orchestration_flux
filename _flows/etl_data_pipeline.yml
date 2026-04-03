@@ -296,3 +296,4 @@ tasks:
       ✅ Pipeline ETL terminé avec succès
       📊 Liaison : {{ outputs.count_clean_liaison.row.nb_lignes_clean }} lignes exportées
       ERP : {{ outputs.count_clean_erp.row.nb_lignes_clean }} lignes exportées
+      WEB : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes exportées
