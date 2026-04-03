@@ -135,6 +135,111 @@ tasks:
                 SELECT * FROM read_parquet('{{ vars.tempDir }}/liaison_dedup.parquet')
               ) TO '{{ vars.outputDir }}/liaison_final.parquet' (FORMAT PARQUET);
 
+# ── Fichier ERP ──────────────────────────────────────────────────────
+      - id: erp_pipeline
+        type: io.kestra.plugin.core.flow.Sequential
+        tasks:
+
+          - id: load_erp
+            type: io.kestra.plugin.jdbc.duckdb.Query
+            description: "Chargement brut xlsx → parquet"
+            sql: |
+              COPY (
+                SELECT * FROM read_xlsx('{{ vars.sourceerp }}', header=TRUE, all_varchar=true)
+              ) TO '{{ vars.tempDir }}/erp_raw.parquet' (FORMAT PARQUET)
+
+          - id: count_raw_erp
+            type: io.kestra.plugin.jdbc.duckdb.Query
+            description: "Compte les lignes brutes"
+            fetchType: FETCH_ONE
+            sql: |
+              SELECT COUNT(*) AS nb_lignes_raw
+              FROM read_parquet('{{ vars.tempDir }}/erp_raw.parquet');
+
+          - id: clean_erp
+            type: io.kestra.plugin.jdbc.duckdb.Query
+            description: "Nettoyage et dédoublonnage erp"
+            sql: |
+              COPY (
+                SELECT product_id, onsale_web, price, stock_quantity, stock_status
+                FROM (
+                  SELECT *,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY TRY_CAST(product_id AS INTEGER)
+                      ORDER BY onsale_web DESC  -- Priorité à ceux qui sont en vente
+                    ) AS rn
+                  FROM read_parquet('{{ vars.tempDir }}/erp_raw.parquet')
+                  WHERE TRY_CAST(product_id AS INTEGER) IS NOT NULL
+                ) sub
+                WHERE rn = 1
+              ) TO '{{ vars.tempDir }}/erp_dedup.parquet' (FORMAT PARQUET);
+
+          - id: count_clean_erp
+            type: io.kestra.plugin.jdbc.duckdb.Query
+            description: "Compte les lignes après nettoyage"
+            fetchType: FETCH_ONE
+            sql: |
+              SELECT
+                COUNT(*) AS nb_lignes_clean,
+                {{ outputs.count_raw_erp.row.nb_lignes_raw }} - COUNT(*) AS nb_supprimees
+              FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet');
+
+          - id: log_erp
+            type: io.kestra.plugin.core.log.Log
+            message: |
+              📊 erp :
+                - Brut       : {{ outputs.count_raw_erp.row.nb_lignes_raw }} lignes
+                - Clean      : {{ outputs.count_clean_erp.row.nb_lignes_clean }} lignes
+                - Supprimées : {{ outputs.count_clean_erp.row.nb_supprimees }} lignes
+
+          - id: test_erp
+            type: io.kestra.plugin.jdbc.duckdb.Query
+            description: "Tests qualité erp : doublons + NULL"
+            fetchType: FETCH_ONE
+            sql: |
+              SELECT
+                (SELECT COUNT(*) FROM (
+                  SELECT product_id
+                  FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
+                  GROUP BY product_id HAVING COUNT(*) > 1
+                )) AS doublons_product_id,
+
+                (SELECT COUNT(*) FROM (
+                  SELECT id_web
+                  FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
+                  GROUP BY id_web HAVING COUNT(*) > 1
+                )) AS doublons_id_web,
+
+                (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
+                  WHERE product_id IS NULL
+                ) AS nulls_product_id,
+
+                (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
+                  WHERE id_web IS NULL
+                ) AS nulls_id_web;
+
+          - id: assert_erp
+            type: io.kestra.plugin.core.flow.If
+            description: "Bloque l'export si un test échoue"
+            condition: "{{ outputs.test_erp.row.doublons_product_id > 0 or outputs.test_erp.row.doublons_id_web > 0 or outputs.test_erp.row.nulls_product_id > 0 or outputs.test_erp.row.nulls_id_web > 0 }}"
+            then:
+              - id: fail_erp
+                type: io.kestra.plugin.core.execution.Fail
+                errorMessage: |
+                  ❌ Tests erp échoués :
+                    - Doublons product_id : {{ outputs.test_erp.row.doublons_product_id }}
+                    - Doublons id_web     : {{ outputs.test_erp.row.doublons_id_web }}
+                    - NULL product_id     : {{ outputs.test_erp.row.nulls_product_id }}
+                    - NULL id_web         : {{ outputs.test_erp.row.nulls_id_web }}
+
+          - id: export_erp
+            type: io.kestra.plugin.jdbc.duckdb.Query
+            description: "Export final erp"
+            sql: |
+              COPY (
+                SELECT * FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
+              ) TO '{{ vars.outputDir }}/erp_final.parquet' (FORMAT PARQUET);
+
   - id: end
     type: io.kestra.plugin.core.log.Log
     message: |
