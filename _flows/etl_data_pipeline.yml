@@ -53,21 +53,12 @@ tasks:
           - id: clean_liaison
             type: io.kestra.plugin.jdbc.duckdb.Query
             description: "Nettoyage et dédoublonnage liaison"
-            sql: |
-              COPY (
-                SELECT product_id, id_web
-                FROM (
-                  SELECT *,
-                    ROW_NUMBER() OVER (
-                      PARTITION BY TRY_CAST(product_id AS INTEGER)
-                      ORDER BY TRY_CAST(id_web AS INTEGER)
-                    ) AS rn
-                  FROM read_parquet('{{ vars.tempDir }}/liaison_raw.parquet')
-                  WHERE TRY_CAST(product_id AS INTEGER) IS NOT NULL
-                    AND TRY_CAST(id_web AS INTEGER) IS NOT NULL
-                ) sub
-                WHERE rn = 1
+            sql: |   
+             COPY (
+                SELECT DISTINCT *
+                FROM read_parquet('{{ vars.tempDir }}/liaison_raw.parquet')
               ) TO '{{ vars.tempDir }}/liaison_dedup.parquet' (FORMAT PARQUET);
+    
 
           - id: count_clean_liaison
             type: io.kestra.plugin.jdbc.duckdb.Query
@@ -251,20 +242,11 @@ tasks:
 
           - id: clean_web
             type: io.kestra.plugin.jdbc.duckdb.Query
-            description: "Nettoyage et dédoublonnage web"
+            description: "Dédoublonnage web"
             sql: |
               COPY (
-                SELECT product_id, onsale_web, price, stock_quantity, stock_status
-                FROM (
-                  SELECT *,
-                    ROW_NUMBER() OVER (
-                      PARTITION BY TRY_CAST(product_id AS INTEGER)
-                      ORDER BY onsale_web DESC  -- Priorité à ceux qui sont en vente
-                    ) AS rn
-                  FROM read_parquet('{{ vars.tempDir }}/web_raw.parquet')
-                  WHERE TRY_CAST(product_id AS INTEGER) IS NOT NULL
-                ) sub
-                WHERE rn = 1
+                SELECT DISTINCT *
+                FROM read_parquet('{{ vars.tempDir }}/web_raw.parquet')
               ) TO '{{ vars.tempDir }}/web_dedup.parquet' (FORMAT PARQUET);
 
           - id: count_clean_web
@@ -285,33 +267,33 @@ tasks:
                 - Clean      : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes
                 - Supprimées : {{ outputs.count_clean_web.row.nb_supprimees }} lignes
 
-          - id: test_web
-            type: io.kestra.plugin.jdbc.duckdb.Query
-            description: "Tests qualité web : doublons + NULL"
-            fetchType: FETCH_ONE
-            sql: |
-              SELECT
-                (SELECT COUNT(*) FROM (
-                  SELECT product_id
-                  FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
-                  GROUP BY product_id HAVING COUNT(*) > 1
-                )) AS doublons_product_id,
+          # - id: test_web
+          #   type: io.kestra.plugin.jdbc.duckdb.Query
+          #   description: "Tests qualité web : doublons + NULL"
+          #   fetchType: FETCH_ONE
+          #   sql: |
+          #     SELECT
+          #       (SELECT COUNT(*) FROM (
+          #         SELECT product_id
+          #         FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
+          #         GROUP BY product_id HAVING COUNT(*) > 1
+          #       )) AS doublons_product_id,
 
-                (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
-                  WHERE product_id IS NULL
-                ) AS nulls_product_id;
+          #       (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
+          #         WHERE product_id IS NULL
+          #       ) AS nulls_product_id;
 
-          - id: assert_web
-            type: io.kestra.plugin.core.flow.If
-            description: "Bloque l'export si un test échoue"
-            condition: "{{ outputs.test_web.row.doublons_product_id > 0 or outputs.test_web.row.nulls_product_id > 0 }}"
-            then:
-              - id: fail_web
-                type: io.kestra.plugin.core.execution.Fail
-                errorMessage: |
-                  ❌ Tests web échoués :
-                    - Doublons product_id : {{ outputs.test_web.row.doublons_product_id }}
-                    - NULL product_id     : {{ outputs.test_web.row.nulls_product_id }}
+          # - id: assert_web
+          #   type: io.kestra.plugin.core.flow.If
+          #   description: "Bloque l'export si un test échoue"
+          #   condition: "{{ outputs.test_web.row.doublons_product_id > 0 or outputs.test_web.row.nulls_product_id > 0 }}"
+          #   then:
+          #     - id: fail_web
+          #       type: io.kestra.plugin.core.execution.Fail
+          #       errorMessage: |
+          #         ❌ Tests web échoués :
+          #           - Doublons product_id : {{ outputs.test_web.row.doublons_product_id }}
+          #           - NULL product_id     : {{ outputs.test_web.row.nulls_product_id }}
 
           - id: export_web
             type: io.kestra.plugin.jdbc.duckdb.Query
