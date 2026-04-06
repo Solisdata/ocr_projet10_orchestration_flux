@@ -299,7 +299,9 @@ tasks:
               COPY (
                 SELECT * FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
               ) TO '{{ vars.outputDir }}/web_final.parquet' (FORMAT PARQUET);
-              
+
+
+
   - id: merge_tables
     type: io.kestra.plugin.jdbc.duckdb.Query
     description: Script SQL de fusion des deux systèmes (web et erp) avec DuckDB
