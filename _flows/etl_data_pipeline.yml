@@ -51,6 +51,7 @@ tasks:
             type: io.kestra.plugin.jdbc.duckdb.Query
             description: "Chargement brut xlsx → parquet"
             sql: |
+            
               COPY (
                 SELECT * FROM read_xlsx('{{ vars.sourceliaison }}', header=TRUE, all_varchar=true)
               ) TO '{{ vars.tempDir }}/liaison_raw.parquet' (FORMAT PARQUET)
