@@ -312,11 +312,11 @@ tasks:
 
       \    FROM read_parquet('{{ vars.outputDir }}/liaison_final.parquet') l\r
 
-      \    LEFT JOIN read_parquet('{{ vars.outputDir }}/web_final.parquet') w\r
+      \    INNER JOIN read_parquet('{{ vars.outputDir }}/web_final.parquet') w\r
 
       \    ON w.sku = l.id_web\r
 
-      \    LEFT JOIN read_parquet('{{ vars.outputDir }}/erp_final.parquet') e\r
+      \    INNER JOIN read_parquet('{{ vars.outputDir }}/erp_final.parquet') e\r
 
       \    ON e.product_id = l.product_id\r
 
@@ -327,7 +327,25 @@ tasks:
     type: io.kestra.plugin.jdbc.duckdb.Query
     fetchType: STORE
     sql: |
-      SELECT * FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+      SELECT * FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet') ;
+  
+  - id: count_merged_data
+    type: io.kestra.plugin.jdbc.duckdb.Query
+    description: "Compte les lignes du fichier final fusionné"
+    fetchType: FETCH_ONE
+    sql: |
+      SELECT COUNT(*) AS total_lignes
+      FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet');
+
+  - id: calculate_sales
+    type: io.kestra.plugin.jdbc.duckdb.Query
+    description: "Calcul du Chiffre d'Affaires Total"
+    fetchType: FETCH_ONE
+    sql: |
+      SELECT 
+        ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)),2) AS ca_total
+      FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+      WHERE total_sales IS NOT NULL AND price IS NOT NULL;
 
   - id: end
     type: io.kestra.plugin.core.log.Log
@@ -336,3 +354,7 @@ tasks:
       📊 Liaison : {{ outputs.count_clean_liaison.row.nb_lignes_clean }} lignes exportées
       ERP : {{ outputs.count_clean_erp.row.nb_lignes_clean }} lignes exportées
       WEB : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes exportées
+      FUSION  : {{ outputs.count_merged_data.row.total_lignes }} lignes exportées (CSV & Parquet)
+
+      RÉSULTAT FINANCIER :
+      💰 Chiffre d'Affaires Total : {{ outputs.calculate_sales.row.ca_total }} €
