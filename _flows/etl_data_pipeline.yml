@@ -9,6 +9,11 @@ variables:
   tempDir: /app/data/tmp
   outputDir: /app/data/output
 
+triggers:
+  - id: monthly_schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 9 15 * *"
+
 pluginDefaults:
   - type: io.kestra.plugin.jdbc.duckdb.Query
     values:
@@ -61,12 +66,11 @@ tasks:
           - id: clean_liaison
             type: io.kestra.plugin.jdbc.duckdb.Query
             description: "Nettoyage et dédoublonnage liaison"
-            sql: |   
-             COPY (
-                SELECT DISTINCT *
-                FROM read_parquet('{{ vars.tempDir }}/liaison_raw.parquet')
-              ) TO '{{ vars.tempDir }}/liaison_dedup.parquet' (FORMAT PARQUET);
-    
+            sql: |
+              COPY (
+                 SELECT DISTINCT *
+                 FROM read_parquet('{{ vars.tempDir }}/liaison_raw.parquet')
+               ) TO '{{ vars.tempDir }}/liaison_dedup.parquet' (FORMAT PARQUET);
 
           - id: count_clean_liaison
             type: io.kestra.plugin.jdbc.duckdb.Query
@@ -117,7 +121,7 @@ tasks:
                 SELECT * FROM read_parquet('{{ vars.tempDir }}/liaison_dedup.parquet')
               ) TO '{{ vars.outputDir }}/liaison_final.parquet' (FORMAT PARQUET);
 
-# ── Fichier ERP ──────────────────────────────────────────────────────
+      # ── Fichier ERP ──────────────────────────────────────────────────────
       - id: erp_pipeline
         type: io.kestra.plugin.core.flow.Sequential
         tasks:
@@ -210,7 +214,7 @@ tasks:
                 SELECT * FROM read_parquet('{{ vars.tempDir }}/erp_dedup.parquet')
               ) TO '{{ vars.outputDir }}/erp_final.parquet' (FORMAT PARQUET);
 
-# ── Fichier web ──────────────────────────────────────────────────────
+      # ── Fichier web ──────────────────────────────────────────────────────
       - id: web_pipeline
         type: io.kestra.plugin.core.flow.Sequential
         tasks:
@@ -295,8 +299,32 @@ tasks:
               COPY (
                 SELECT * FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
               ) TO '{{ vars.outputDir }}/web_final.parquet' (FORMAT PARQUET);
+              
+  - id: merge_tables
+    type: io.kestra.plugin.jdbc.duckdb.Query
+    description: Script SQL de fusion des deux systèmes (web et erp) avec DuckDB
+    sql: "  COPY (\r
 
+      \    SELECT *\r
 
+      \    FROM read_parquet('{{ vars.outputDir }}/liaison_final.parquet') l\r
+
+      \    LEFT JOIN read_parquet('{{ vars.outputDir }}/web_final.parquet') w\r
+
+      \    ON w.sku = l.id_web\r
+
+      \    LEFT JOIN read_parquet('{{ vars.outputDir }}/erp_final.parquet') e\r
+
+      \    ON e.product_id = l.product_id\r
+
+      \  ) TO '{{ vars.outputDir }}/merge_final.parquet' (FORMAT PARQUET)"
+    fetchType: STORE
+
+  - id: preview_merge
+    type: io.kestra.plugin.jdbc.duckdb.Query
+    fetchType: STORE
+    sql: |
+      SELECT * FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
 
   - id: end
     type: io.kestra.plugin.core.log.Log
@@ -305,9 +333,3 @@ tasks:
       📊 Liaison : {{ outputs.count_clean_liaison.row.nb_lignes_clean }} lignes exportées
       ERP : {{ outputs.count_clean_erp.row.nb_lignes_clean }} lignes exportées
       WEB : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes exportées
-
-
-triggers:
-  - id: monthly_schedule
-    type: io.kestra.plugin.core.trigger.Schedule
-    cron: "0 9 15 * *"
