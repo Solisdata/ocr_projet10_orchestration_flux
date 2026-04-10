@@ -328,7 +328,32 @@ tasks:
         SELECT COUNT(*) AS total_lignes
         FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet');
 
-        
+    - id: test_jointures
+      type: io.kestra.plugin.jdbc.duckdb.Query
+      description: "Tests de cohérence des jointures"
+      fetchType: FETCH_ONE
+      sql: |
+        SELECT
+          -- Aucune ligne ne doit avoir de clé de jointure NULL après merge
+          COUNT(*) FILTER (WHERE product_id IS NULL) AS nulls_product_id,
+          COUNT(*) FILTER (WHERE sku IS NULL)        AS nulls_sku,
+
+          -- Le merge ne doit pas avoir gonflé les lignes (pas de produits dupliqués)
+          COUNT(*) - COUNT(DISTINCT product_id)      AS doublons_apres_merge
+        FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet');
+
+    - id: assert_jointures
+      type: io.kestra.plugin.core.flow.If
+      description: "Bloque si la jointure est incohérente"
+      condition: "{{ outputs.test_jointures.row.nulls_product_id > 0 or outputs.test_jointures.row.nulls_sku > 0 or outputs.test_jointures.row.doublons_apres_merge > 0 }}"
+      then:
+        - id: fail_jointures
+          type: io.kestra.plugin.core.execution.Fail
+          errorMessage: |
+            ❌ Tests jointures échoués :
+              - NULL product_id      : {{ outputs.test_jointures.row.nulls_product_id }}
+              - NULL sku             : {{ outputs.test_jointures.row.nulls_sku }}
+              - Doublons après merge : {{ outputs.test_jointures.row.doublons_apres_merge }}
 
   - id: calcul_outputs_metier
     type: io.kestra.plugin.core.flow.Parallel
@@ -348,6 +373,42 @@ tasks:
               ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)), 2) AS ca_total
             FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
             WHERE total_sales IS NOT NULL AND price IS NOT NULL;
+
+        - id: test_ca
+          type: io.kestra.plugin.jdbc.duckdb.Query
+          description: "Tests de cohérence du CA"
+          fetchType: FETCH_ONE
+          sql: |
+            SELECT
+              -- Le CA global ne doit pas être NULL ni nul
+              CASE WHEN {{ outputs.calculate_ca_global.row.ca_total }} IS NULL
+                   THEN 1 ELSE 0 END                              AS ca_null,
+              CASE WHEN {{ outputs.calculate_ca_global.row.ca_total }} <= 0
+                   THEN 1 ELSE 0 END                              AS ca_negatif_ou_nul,
+
+              -- Lignes avec price ou total_sales NULL ou négatifs
+              COUNT(*) FILTER (
+                WHERE CAST(price AS DOUBLE) <= 0
+                   OR CAST(total_sales AS INTEGER) < 0
+              )                                                    AS lignes_incoherentes
+            FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+            WHERE price IS NOT NULL AND total_sales IS NOT NULL;
+
+        - id: assert_ca
+          type: io.kestra.plugin.core.flow.If
+          description: "Bloque si le CA est incohérent"
+          condition: >
+            {{ outputs.test_ca.row.ca_null > 0
+            or outputs.test_ca.row.ca_negatif_ou_nul > 0
+            or outputs.test_ca.row.lignes_incoherentes > 0 }}
+          then:
+            - id: fail_ca
+              type: io.kestra.plugin.core.execution.Fail
+              errorMessage: |
+                ❌ Tests CA échoués :
+                  - CA NULL             : {{ outputs.test_ca.row.ca_null }}
+                  - CA ≤ 0             : {{ outputs.test_ca.row.ca_negatif_ou_nul }}
+                  - Lignes incohérentes : {{ outputs.test_ca.row.lignes_incoherentes }}
       
         - id: export_ca_produit
           type: io.kestra.plugin.scripts.python.Script
@@ -401,6 +462,49 @@ tasks:
       
             df.to_parquet('/app/data/output/vins_classes.parquet', index=False)
             print(f"✅ Classification OK — {len(df)} vins classifiés")
+
+        - id: test_zscore
+          type: io.kestra.plugin.scripts.python.Script
+          description: "Validation de la distribution Z-score"
+          taskRunner:
+            type: io.kestra.plugin.core.runner.Process
+          beforeCommands:
+            - pip install pandas pyarrow -q
+          script: |
+            import pandas as pd
+            import sys
+
+            df = pd.read_parquet('/app/data/output/vins_classes.parquet')
+
+            errors = []
+
+            # La colonne z_score ne doit pas contenir de NaN
+            nb_nan = df['z_score'].isna().sum()
+            if nb_nan > 0:
+                errors.append(f"Z-score contient {nb_nan} valeurs NaN")
+
+            # La moyenne des z-scores doit être proche de 0 (tolérance ±0.01)
+            mean_z = df['z_score'].mean()
+            if abs(mean_z) > 0.01:
+                errors.append(f"Moyenne z-score anormale : {mean_z:.4f} (attendu ≈ 0)")
+
+            # L'écart-type des z-scores doit être proche de 1 (tolérance ±0.05)
+            std_z = df['z_score'].std()
+            if abs(std_z - 1) > 0.05:
+                errors.append(f"Écart-type z-score anormal : {std_z:.4f} (attendu ≈ 1)")
+
+            # Au moins 1 vin millésime doit exister
+            nb_premium = (df['type_vin'] == 'millésime').sum()
+            if nb_premium == 0:
+                errors.append("Aucun vin millésime détecté — vérifier le seuil z > 2")
+
+            if errors:
+                print("❌ Tests Z-score échoués :")
+                for e in errors:
+                    print(f"  - {e}")
+                sys.exit(1)
+
+            print(f"✅ Z-score OK — moyenne={mean_z:.4f}, std={std_z:.4f}, millésimes={nb_premium}")
 
         - id: export_vins_premium
           type: io.kestra.plugin.jdbc.duckdb.Query
