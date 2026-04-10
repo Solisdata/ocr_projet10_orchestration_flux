@@ -422,6 +422,24 @@ tasks:
               WHERE type_vin = 'ordinaire'
             ) TO '/app/data/output/vins_ordinaires.csv' (FORMAT CSV, HEADER TRUE);
 
+        - id: count_vins_premium
+          type: io.kestra.plugin.jdbc.duckdb.Query
+          description: "Compte les vins premium"
+          fetchType: FETCH_ONE
+          sql: |
+            SELECT COUNT(*) AS nb_premium
+            FROM read_parquet('/app/data/output/vins_classes.parquet')
+            WHERE type_vin = 'millésime';
+
+        - id: count_vins_ordinaires
+          type: io.kestra.plugin.jdbc.duckdb.Query
+          description: "Compte les vins ordinaires"
+          fetchType: FETCH_ONE
+          sql: |
+            SELECT COUNT(*) AS nb_ordinaires
+            FROM read_parquet('/app/data/output/vins_classes.parquet')
+            WHERE type_vin = 'ordinaire';
+
 
   - id: end
     type: io.kestra.plugin.core.log.Log
@@ -434,3 +452,7 @@ tasks:
  
       RÉSULTAT FINANCIER :
       💰 Chiffre d'Affaires Total : {{ outputs.calculate_ca_global.row.ca_total }} €
+
+       🍷 CLASSIFICATION DES VINS :
+      Vins millésimes  : {{ outputs.count_vins_premium.row.nb_premium }} vins
+      Vins ordinaires  : {{ outputs.count_vins_ordinaires.row.nb_ordinaires }} vins
