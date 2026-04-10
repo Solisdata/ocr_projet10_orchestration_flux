@@ -347,33 +347,35 @@ tasks:
       FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
       WHERE total_sales IS NOT NULL AND price IS NOT NULL;
 
-  - id: export_ca_produit
-    type: io.kestra.plugin.scripts.python.Script
-    description: "Export CA par produit en XLSX"
-    beforeCommands:
-      - pip install duckdb pandas openpyxl -q
-    inputFiles:
-      merge_final.parquet: "{{ outputs.merge_tables.uri }}"
-    outputFiles:
-      - "ca_produit.xlsx"
-    script: |
-      import duckdb
-      import pandas as pd
+  # - id: export_ca_produit
+  #   type: io.kestra.plugin.scripts.python.Script
+  #   description: "Export CA par produit en XLSX"
+  #   beforeCommands:
+  #     - pip install duckdb pandas openpyxl -q
+  #   inputFiles:
+  #     merge_final.parquet: "{{ outputs.merge_tables.uri }}"
+  #   outputFiles:
+  #     - "ca_produit.xlsx"
+  #   script: |
+  #     import duckdb
+  #     import pandas as pd
 
-      df = duckdb.query("""
-          SELECT 
-              product_id,
-              ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)), 2) AS ca_produit
-          FROM read_parquet('merge_final.parquet')
-          GROUP BY product_id
-      """).to_df()
+  #     df = duckdb.query("""
+  #         SELECT 
+  #             product_id,
+  #             ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)), 2) AS ca_produit
+  #         FROM read_parquet('merge_final.parquet')
+  #         GROUP BY product_id
+  #     """).to_df()
 
-      df.to_excel('ca_produit.xlsx', index=False, engine='openpyxl')
+  #     df.to_excel('ca_produit.xlsx', index=False, engine='openpyxl')
 
 
   - id: classify_wines
     type: io.kestra.plugin.scripts.python.Script
     description: "Classification vins avec z-score"
+    beforeCommands:
+    - pip install duckdb pandas openpyxl -q
     script: |
       import duckdb
       import pandas as pd
