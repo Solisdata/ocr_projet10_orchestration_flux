@@ -347,6 +347,49 @@ tasks:
       FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
       WHERE total_sales IS NOT NULL AND price IS NOT NULL;
 
+  - id: export_ca_produit
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Export CA par produit en XLS"
+    script: |
+      import duckdb
+      import pandas as pd
+
+      df = duckdb.query("""
+          SELECT 
+              product_id,
+              SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)) AS ca_produit
+          FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+          GROUP BY product_id
+      """).to_df()
+
+      df.to_excel('{{ vars.outputDir }}/ca_produit.xls', index=False)
+
+      print("CA produit exporté")
+
+  - id: classify_wines
+    type: io.kestra.plugin.scripts.python.Script
+    description: "Classification vins avec z-score"
+    script: |
+      import duckdb
+      import pandas as pd
+
+      df = duckdb.query("""
+          SELECT *
+          FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+      """).to_df()
+
+      df['price'] = df['price'].astype(float)
+
+      mean_price = df['price'].mean()
+      std_price = df['price'].std()
+
+      df['z_score'] = (df['price'] - mean_price) / std_price
+      df['type_vin'] = df['z_score'].apply(lambda x: "millésime" if x > 2 else "ordinaire")
+
+      df.to_parquet('{{ vars.outputDir }}/vins_classes.parquet', index=False)
+
+      print("Classification OK")
+
   - id: end
     type: io.kestra.plugin.core.log.Log
     message: |
