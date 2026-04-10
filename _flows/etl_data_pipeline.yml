@@ -265,33 +265,33 @@ tasks:
                 - Clean      : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes
                 - Supprimées : {{ outputs.count_clean_web.row.nb_supprimees }} lignes
 
-          # - id: test_web
-          #   type: io.kestra.plugin.jdbc.duckdb.Query
-          #   description: "Tests qualité web : doublons + NULL"
-          #   fetchType: FETCH_ONE
-          #   sql: |
-          #     SELECT
-          #       (SELECT COUNT(*) FROM (
-          #         SELECT product_id
-          #         FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
-          #         GROUP BY product_id HAVING COUNT(*) > 1
-          #       )) AS doublons_product_id,
+          - id: test_web
+            type: io.kestra.plugin.jdbc.duckdb.Query
+            description: "Tests qualité web : doublons + NULL"
+            fetchType: FETCH_ONE
+            sql: |
+              SELECT
+                (SELECT COUNT(*) FROM (
+                  SELECT sku
+                  FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
+                  GROUP BY sku HAVING COUNT(*) > 1
+                )) AS doublons_sku,
 
-          #       (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
-          #         WHERE product_id IS NULL
-          #       ) AS nulls_product_id;
+                (SELECT COUNT(*) FROM read_parquet('{{ vars.tempDir }}/web_dedup.parquet')
+                  WHERE sku IS NULL
+                ) AS nulls_sku;
 
-          # - id: assert_web
-          #   type: io.kestra.plugin.core.flow.If
-          #   description: "Bloque l'export si un test échoue"
-          #   condition: "{{ outputs.test_web.row.doublons_product_id > 0 or outputs.test_web.row.nulls_product_id > 0 }}"
-          #   then:
-          #     - id: fail_web
-          #       type: io.kestra.plugin.core.execution.Fail
-          #       errorMessage: |
-          #         ❌ Tests web échoués :
-          #           - Doublons product_id : {{ outputs.test_web.row.doublons_product_id }}
-          #           - NULL product_id     : {{ outputs.test_web.row.nulls_product_id }}
+          - id: assert_web
+            type: io.kestra.plugin.core.flow.If
+            description: "Bloque l'export si un test échoue"
+            condition: "{{ outputs.test_web.row.doublons_sku > 0 or outputs.test_web.row.nulls_sku > 0 }}"
+            then:
+              - id: fail_web
+                type: io.kestra.plugin.core.execution.Fail
+                errorMessage: |
+                  ❌ Tests web échoués :
+                    - Doublons sku : {{ outputs.test_web.row.doublons_sku }}
+                    - NULL sku     : {{ outputs.test_web.row.nulls_sku }}
 
           - id: export_web
             type: io.kestra.plugin.jdbc.duckdb.Query
