@@ -349,7 +349,13 @@ tasks:
 
   - id: export_ca_produit
     type: io.kestra.plugin.scripts.python.Script
-    description: "Export CA par produit en XLS"
+    description: "Export CA par produit en XLSX"
+    beforeCommands:
+      - pip install duckdb pandas openpyxl -q
+    inputFiles:
+      merge_final.parquet: "{{ outputs.merge_tables.uri }}"
+    outputFiles:
+      - "ca_produit.xlsx"
     script: |
       import duckdb
       import pandas as pd
@@ -357,14 +363,13 @@ tasks:
       df = duckdb.query("""
           SELECT 
               product_id,
-              SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)) AS ca_produit
-          FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+              ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)), 2) AS ca_produit
+          FROM read_parquet('merge_final.parquet')
           GROUP BY product_id
       """).to_df()
 
-      df.to_excel('{{ vars.outputDir }}/ca_produit.xls', index=False)
+      df.to_excel('ca_produit.xlsx', index=False, engine='openpyxl')
 
-      print("CA produit exporté")
 
   - id: classify_wines
     type: io.kestra.plugin.scripts.python.Script
