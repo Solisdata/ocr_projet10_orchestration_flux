@@ -370,33 +370,37 @@ tasks:
       
             df.to_excel('/app/data/output/ca_produit.xlsx', index=False, engine='openpyxl')
             print(f"✅ CA produit exporté — {len(df)} lignes")
+
+      - id: analyse_type_wines
+        type: io.kestra.plugin.core.flow.Sequential
+        tasks:
       
-  - id: classify_wines
-    type: io.kestra.plugin.scripts.python.Script
-    description: "Classification vins avec z-score"
-    taskRunner:
-      type: io.kestra.plugin.core.runner.Process
-    beforeCommands:
-      - pip install duckdb pandas pyarrow -q
-    script: |
-      import duckdb
-      import pandas as pd
- 
-      df = duckdb.query("""
-          SELECT *
-          FROM read_parquet('/app/data/output/merge_final.parquet')
-      """).to_df()
- 
-      df['price'] = df['price'].astype(float)
- 
-      mean_price = df['price'].mean()
-      std_price = df['price'].std()
- 
-      df['z_score'] = (df['price'] - mean_price) / std_price
-      df['type_vin'] = df['z_score'].apply(lambda x: "millésime" if x > 2 else "ordinaire")
- 
-      df.to_parquet('/app/data/output/vins_classes.parquet', index=False)
-      print(f"✅ Classification OK — {len(df)} vins classifiés")
+        - id: classify_wines
+          type: io.kestra.plugin.scripts.python.Script
+          description: "Classification vins avec z-score"
+          taskRunner:
+            type: io.kestra.plugin.core.runner.Process
+          beforeCommands:
+            - pip install duckdb pandas pyarrow -q
+          script: |
+            import duckdb
+            import pandas as pd
+      
+            df = duckdb.query("""
+                SELECT *
+                FROM read_parquet('/app/data/output/merge_final.parquet')
+            """).to_df()
+      
+            df['price'] = df['price'].astype(float)
+      
+            mean_price = df['price'].mean()
+            std_price = df['price'].std()
+      
+            df['z_score'] = (df['price'] - mean_price) / std_price
+            df['type_vin'] = df['z_score'].apply(lambda x: "millésime" if x > 2 else "ordinaire")
+      
+            df.to_parquet('/app/data/output/vins_classes.parquet', index=False)
+            print(f"✅ Classification OK — {len(df)} vins classifiés")
  
   - id: end
     type: io.kestra.plugin.core.log.Log
@@ -408,4 +412,4 @@ tasks:
       📊 FUSION  : {{ outputs.count_merged_data.row.total_lignes }} lignes exportées
  
       RÉSULTAT FINANCIER :
-      💰 Chiffre d'Affaires Total : {{ outputs.calculate_sales.row.ca_total }} €
+      💰 Chiffre d'Affaires Total : {{ outputs.calculate_ca_global.row.ca_total }} €
