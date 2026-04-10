@@ -302,45 +302,50 @@ tasks:
               ) TO '{{ vars.outputDir }}/web_final.parquet' (FORMAT PARQUET);
 
 
+  - id: merge_files
+    type: io.kestra.plugin.core.flow.Sequential
+    description: "merge les tables erp et web avec la table liaison"
+    tasks:
 
-  - id: merge_tables
-    type: io.kestra.plugin.jdbc.duckdb.Query
-    description: Script SQL de fusion des deux systèmes (web et erp) avec DuckDB
-    sql: "  COPY (\r
+      - id: merge_tables
+        type: io.kestra.plugin.jdbc.duckdb.Query
+        description: Script SQL de fusion des deux systèmes (web et erp) avec DuckDB
+        sql: |
+          COPY (
+            SELECT *
+            FROM read_parquet('{{ vars.tempDir }}/liaison_final.parquet') l
+            INNER JOIN read_parquet('{{ vars.tempDir }}/web_final.parquet') w
+              ON w.sku = l.id_web
+            INNER JOIN read_parquet('{{ vars.tempDir }}/erp_final.parquet') e
+              ON e.product_id = l.product_id
+          )
+          TO 'merge_final.parquet'
+          (FORMAT PARQUET)
 
-      \    SELECT *\r
+        outputFiles:
+          - merge_final.parquet
 
-      \    FROM read_parquet('{{ vars.outputDir }}/liaison_final.parquet') l\r
+      - id: count_merged_data
+        type: io.kestra.plugin.jdbc.duckdb.Query
+        fetchType: FETCH_ONE
+        description: "Compte les lignes du fichier final"
 
-      \    INNER JOIN read_parquet('{{ vars.outputDir }}/web_final.parquet') w\r
+        inputFiles:
+          merge_final.parquet: "{{ outputs.merge_tables.uri }}"
 
-      \    ON w.sku = l.id_web\r
+        sql: |
+          SELECT COUNT(*) AS total_lignes
+          FROM read_parquet('merge_final.parquet');
 
-      \    INNER JOIN read_parquet('{{ vars.outputDir }}/erp_final.parquet') e\r
 
-      \    ON e.product_id = l.product_id\r
 
-      \  ) TO '{{ vars.outputDir }}/merge_final.parquet' (FORMAT PARQUET)"
-    fetchType: STORE
-
-  - id: preview_merge
-    type: io.kestra.plugin.jdbc.duckdb.Query
-    fetchType: STORE
-    sql: |
-      SELECT * FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet') ;
-  
-  - id: count_merged_data
-    type: io.kestra.plugin.jdbc.duckdb.Query
-    description: "Compte les lignes du fichier final fusionné"
-    fetchType: FETCH_ONE
-    sql: |
-      SELECT COUNT(*) AS total_lignes
-      FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet');
 
   - id: calculate_sales
     type: io.kestra.plugin.jdbc.duckdb.Query
     description: "Calcul du Chiffre d'Affaires Total"
     fetchType: FETCH_ONE
+    inputFiles:
+      merge_final.parquet: "{{ outputs.merge_tables.uri }}"
     sql: |
       SELECT 
         ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)),2) AS ca_total
