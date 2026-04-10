@@ -307,109 +307,105 @@ tasks:
     description: "merge les tables erp et web avec la table liaison"
     tasks:
 
-      - id: merge_tables
-        type: io.kestra.plugin.jdbc.duckdb.Query
-        description: Script SQL de fusion des deux systèmes (web et erp) avec DuckDB
-        sql: |
-          COPY (
-            SELECT *
-            FROM read_parquet('{{ vars.tempDir }}/liaison_final.parquet') l
-            INNER JOIN read_parquet('{{ vars.tempDir }}/web_final.parquet') w
-              ON w.sku = l.id_web
-            INNER JOIN read_parquet('{{ vars.tempDir }}/erp_final.parquet') e
-              ON e.product_id = l.product_id
-          )
-          TO 'merge_final.parquet'
-          (FORMAT PARQUET)
+    - id: merge_tables
+      type: io.kestra.plugin.jdbc.duckdb.Query
+      description: "Fusion des trois sources (liaison + web + erp)"
+      sql: |
+        COPY (
+          SELECT *
+          FROM read_parquet('{{ vars.outputDir }}/liaison_final.parquet') l
+          INNER JOIN read_parquet('{{ vars.outputDir }}/web_final.parquet') w
+            ON w.sku = l.id_web
+          INNER JOIN read_parquet('{{ vars.outputDir }}/erp_final.parquet') e
+            ON e.product_id = l.product_id
+        ) TO '{{ vars.outputDir }}/merge_final.parquet' (FORMAT PARQUET)
 
-        outputFiles:
-          - merge_final.parquet
+    - id: count_merged_data
+      type: io.kestra.plugin.jdbc.duckdb.Query
+      description: "Compte les lignes du fichier final fusionné"
+      fetchType: FETCH_ONE
+      sql: |
+        SELECT COUNT(*) AS total_lignes
+        FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet');
 
-      - id: count_merged_data
-        type: io.kestra.plugin.jdbc.duckdb.Query
-        fetchType: FETCH_ONE
-        description: "Compte les lignes du fichier final"
+        
 
-        inputFiles:
-          merge_final.parquet: "{{ outputs.merge_tables.uri }}"
+  - id: calcul_outputs_metier
+    type: io.kestra.plugin.core.flow.Parallel
+    description: "calcul des outputs métiers"
+    tasks:
 
-        sql: |
-          SELECT COUNT(*) AS total_lignes
-          FROM read_parquet('merge_final.parquet');
+      - id: calcul_ca
+        type: io.kestra.plugin.core.flow.Sequential
+        tasks:
 
-
-
-
-  - id: calculate_sales
-    type: io.kestra.plugin.jdbc.duckdb.Query
-    description: "Calcul du Chiffre d'Affaires Total"
-    fetchType: FETCH_ONE
-    inputFiles:
-      merge_final.parquet: "{{ outputs.merge_tables.uri }}"
-    sql: |
-      SELECT 
-        ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)),2) AS ca_total
-      FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
-      WHERE total_sales IS NOT NULL AND price IS NOT NULL;
-
-  # - id: export_ca_produit
-  #   type: io.kestra.plugin.scripts.python.Script
-  #   description: "Export CA par produit en XLSX"
-  #   beforeCommands:
-  #     - pip install duckdb pandas openpyxl -q
-  #   inputFiles:
-  #     merge_final.parquet: "{{ outputs.merge_tables.uri }}"
-  #   outputFiles:
-  #     - "ca_produit.xlsx"
-  #   script: |
-  #     import duckdb
-  #     import pandas as pd
-
-  #     df = duckdb.query("""
-  #         SELECT 
-  #             product_id,
-  #             ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)), 2) AS ca_produit
-  #         FROM read_parquet('merge_final.parquet')
-  #         GROUP BY product_id
-  #     """).to_df()
-
-  #     df.to_excel('ca_produit.xlsx', index=False, engine='openpyxl')
-
-
+        - id: calculate_ca_global
+          type: io.kestra.plugin.jdbc.duckdb.Query
+          description: "Calcul du Chiffre d'Affaires Total"
+          fetchType: FETCH_ONE
+          sql: |
+            SELECT
+              ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)), 2) AS ca_total
+            FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+            WHERE total_sales IS NOT NULL AND price IS NOT NULL;
+      
+        - id: export_ca_produit
+          type: io.kestra.plugin.scripts.python.Script
+          description: "Export CA par produit en XLSX"
+          taskRunner:
+            type: io.kestra.plugin.core.runner.Process
+          beforeCommands:
+            - pip install duckdb pandas openpyxl -q
+          script: |
+            import duckdb
+            import pandas as pd
+      
+            df = duckdb.query("""
+                SELECT
+                    product_id,
+                    ROUND(SUM(CAST(price AS DOUBLE) * CAST(total_sales AS INTEGER)), 2) AS ca_produit
+                FROM read_parquet('/app/data/output/merge_final.parquet')
+                GROUP BY product_id
+            """).to_df()
+      
+            df.to_excel('/app/data/output/ca_produit.xlsx', index=False, engine='openpyxl')
+            print(f"✅ CA produit exporté — {len(df)} lignes")
+      
   - id: classify_wines
     type: io.kestra.plugin.scripts.python.Script
     description: "Classification vins avec z-score"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
     beforeCommands:
-    - pip install duckdb pandas openpyxl -q
+      - pip install duckdb pandas pyarrow -q
     script: |
       import duckdb
       import pandas as pd
-
+ 
       df = duckdb.query("""
           SELECT *
-          FROM read_parquet('{{ vars.outputDir }}/merge_final.parquet')
+          FROM read_parquet('/app/data/output/merge_final.parquet')
       """).to_df()
-
+ 
       df['price'] = df['price'].astype(float)
-
+ 
       mean_price = df['price'].mean()
       std_price = df['price'].std()
-
+ 
       df['z_score'] = (df['price'] - mean_price) / std_price
       df['type_vin'] = df['z_score'].apply(lambda x: "millésime" if x > 2 else "ordinaire")
-
-      df.to_parquet('{{ vars.outputDir }}/vins_classes.parquet', index=False)
-
-      print("Classification OK")
-
+ 
+      df.to_parquet('/app/data/output/vins_classes.parquet', index=False)
+      print(f"✅ Classification OK — {len(df)} vins classifiés")
+ 
   - id: end
     type: io.kestra.plugin.core.log.Log
     message: |
       ✅ Pipeline ETL terminé avec succès
       📊 Liaison : {{ outputs.count_clean_liaison.row.nb_lignes_clean }} lignes exportées
-      ERP : {{ outputs.count_clean_erp.row.nb_lignes_clean }} lignes exportées
-      WEB : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes exportées
-      FUSION  : {{ outputs.count_merged_data.row.total_lignes }} lignes exportées (CSV & Parquet)
-
+      📊 ERP     : {{ outputs.count_clean_erp.row.nb_lignes_clean }} lignes exportées
+      📊 WEB     : {{ outputs.count_clean_web.row.nb_lignes_clean }} lignes exportées
+      📊 FUSION  : {{ outputs.count_merged_data.row.total_lignes }} lignes exportées
+ 
       RÉSULTAT FINANCIER :
       💰 Chiffre d'Affaires Total : {{ outputs.calculate_sales.row.ca_total }} €
