@@ -9,7 +9,7 @@ BottleNeck est un marchand de vin qui dispose de données provenant de deux syst
 
 - **ERP** : produits, stock, prix  
 - **CMS** : ventes web  
-Les données sont fournies sous forme de fichiers (Excel / Parquet) et doivent être :
+Les données sont fournies sous forme de fichiers Excel et doivent être :
 - nettoyées  
 - contrôlées  
 - réconciliées  
@@ -24,10 +24,8 @@ Les données sont fournies sous forme de fichiers (Excel / Parquet) et doivent �
 - identifier les vins premium (z-score / IQR)  
 - produire des datasets exploitables pour analyse  
 
-Aujourd’hui, les traitements sont manuels. L'objectif est d'automatiser toute la chaîne de traitement avec un pipeline data orchestré.
-
-Solution mise en place : 
-Mise en place d’un pipeline de données automatisé avec **Kestra** permettant de :
+Aujourd’hui, les traitements sont manuels. L'objectif est d'automatiser toute la chaîne de traitement avec un pipeline data orchestré.  
+Pour cela, un pipeline de données automatisé a été mis en place avec **Kestra** permettant de :
 - orchestrer les étapes ETL  
 - exécuter des contrôles qualité  
 - transformer les données  
@@ -62,15 +60,15 @@ Le pipeline est structuré comme suit :
 
 
 ## Choix technologiques
-Kestra : Kestra est un outil d’orchestration de pipelines de données qui permet de définir, automatiser et monitorer des workflows ETL de manière déclarative via du YAML.
-DuckDB : SQL rapide sur fichiers (Parquet / Excel)
-Python : logique métier et validations
-Docker / Docker Compose : environnement reproductible local
-Parquet : format optimisé pour performance et analyse
+Kestra : Kestra est un outil d’orchestration de pipelines de données qui permet de définir, automatiser et monitorer des workflows ETL de manière déclarative via du YAML.  
+DuckDB : SQL rapide sur fichiers (Parquet / Excel)  
+Python : logique métier et validations  
+Docker / Docker Compose : environnement reproductible local  
+Parquet : format optimisé pour performance et analyse  
 
 ## Configuration de l'environnement
 
-Le projet utilise un fichier `.env` pour centraliser la gestion des dossiers et des fichiers sources. Assurez-vous que votre fichier est configuré comme suit :
+Le projet utilise un fichier `.env` pour centraliser la gestion des dossiers et des fichiers sources. Il peut être reconfigurer au besoin :  
 
 ```env
 # Dossiers
@@ -83,17 +81,6 @@ WEB_FILE=Fichier_web.xlsx
 LIAISON_FILE=fichier_liaison.xlsx
 ```
 
-## Variables du Pipeline Kestra
-
-Les chemins utilisés à l'intérieur du container Kestra sont mappés sur ces variables dans le flow `etl_data_pipeline.yml`. Voici la correspondance :
-
-| Variable Kestra | Chemin interne (Container) | Description |
-|---|---|---|
-| `sourceerp` | `/app/data/raw/Fichier_erp.xlsx` | Source de données ERP |
-| `sourceweb` | `/app/data/raw/Fichier_web.xlsx` | Source de données CMS (Web) |
-| `sourceliaison` | `/app/data/raw/fichier_liaison.xlsx` | Table de correspondance |
-| `tempDir` | `/app/data/tmp` | Fichiers Parquet temporaires |
-| `outputDir` | `/app/data/output` | Résultats exportés |
 
 ## Installation et Démarrage
 
