@@ -84,9 +84,11 @@ LIAISON_FILE=fichier_liaison.xlsx
 
 ## Installation et Démarrage
 
+
 ### 1. Prérequis
 
 - Docker & Docker Compose (v2.0+)
+
 
 ### 2. Démarrage des services
 
@@ -98,16 +100,19 @@ docker-compose up -d
 
 Le container Kestra chargera automatiquement les fichiers présents dans `data/raw/` (définis par votre `INPUT_PATH`) pour exécuter le pipeline.
 
+
 ### 3. Acceder à l'interface : 
 
 Accéder à l'interface Kestra: http://localhost:8080
 
+
 ### 4.Exécuter le pipeline
 
 Manuelle:
-UI Kestra → Flows → ocde_p10 → "Execute"
+UI Kestra → Flows → "Execute"
 
 Automatique: Le pipeline s'exécute le 15e jour de chaque mois à 9h UTC.
+
 
 ### 5. Surveiller l'exécution
 Logs en temps réel:
@@ -115,6 +120,7 @@ UI Kestra →  Dernière exécution → Logs
 
 Statut des tâches:
 Chaque tâche affiche: ✅ SUCCESS | ⚠️ WARNING | ❌ FAILED
+
 
 ### 6. Récupération des outputs
 
