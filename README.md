@@ -24,8 +24,7 @@ Les données sont fournies sous forme de fichiers (Excel / Parquet) et doivent �
 - identifier les vins premium (z-score / IQR)  
 - produire des datasets exploitables pour analyse  
 
-Aujourd’hui, les traitements sont manuels.
-Objectif : automatiser toute la chaîne de traitement avec un pipeline data orchestré.
+Aujourd’hui, les traitements sont manuels. L'objectif est d'automatiser toute la chaîne de traitement avec un pipeline data orchestré.
 
 Solution mise en place : 
 Mise en place d’un pipeline de données automatisé avec **Kestra** permettant de :
@@ -116,20 +115,21 @@ Le container Kestra chargera automatiquement les fichiers présents dans `data/r
 
 Accéder à l'interface Kestra: http://localhost:8080
 
-Exécuter le pipeline
-Manuelle:
+### 4.Exécuter le pipeline
 
+Manuelle:
 UI Kestra → Flows → ocde_p10 → "Execute"
+
 Automatique: Le pipeline s'exécute le 15e jour de chaque mois à 9h UTC.
 
-Surveiller l'exécution
+### 5. Surveiller l'exécution
 Logs en temps réel:
 UI Kestra →  Dernière exécution → Logs
 
 Statut des tâches:
 Chaque tâche affiche: ✅ SUCCESS | ⚠️ WARNING | ❌ FAILED
 
-## Récupération des outputs
+### 6. Récupération des outputs
 
 Après l'exécution, vous pouvez récupérer les résultats finaux directement depuis votre terminal local :
 
@@ -142,12 +142,6 @@ docker-compose cp kestra:/app/data/output/vins_premium.csv ./vins_premium.csv
 docker-compose cp kestra:/app/data/output/vins_ordinaires.csv ./vins_ordinaires.csv
 ```
 
-Outils utilisés
-Python
-DuckDB
-Kestra
-Docker / Docker Compose
-SQL (DuckDB)
 
 
 
