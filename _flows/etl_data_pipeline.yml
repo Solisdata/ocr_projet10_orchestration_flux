@@ -397,17 +397,14 @@ tasks:
         - id: assert_ca
           type: io.kestra.plugin.core.flow.If
           description: "Bloque si le CA est incohérent"
-          condition: >
-            {{ outputs.test_ca.row.ca_null > 0
-            or outputs.test_ca.row.ca_negatif_ou_nul > 0
-            or outputs.test_ca.row.lignes_incoherentes > 0 }}
+          condition: "{{ outputs.test_ca.row.ca_null > 0 or outputs.test_ca.row.ca_negatif_ou_nul > 0 or outputs.test_ca.row.lignes_incoherentes > 0 }}"
           then:
             - id: fail_ca
               type: io.kestra.plugin.core.execution.Fail
               errorMessage: |
                 ❌ Tests CA échoués :
                   - CA NULL             : {{ outputs.test_ca.row.ca_null }}
-                  - CA ≤ 0             : {{ outputs.test_ca.row.ca_negatif_ou_nul }}
+                  - CA ≤ 0              : {{ outputs.test_ca.row.ca_negatif_ou_nul }}
                   - Lignes incohérentes : {{ outputs.test_ca.row.lignes_incoherentes }}
       
         - id: export_ca_produit
