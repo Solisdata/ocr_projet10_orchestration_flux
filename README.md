@@ -24,15 +24,10 @@ Les données sont fournies sous forme de fichiers (Excel / Parquet) et doivent �
 - identifier les vins premium (z-score / IQR)  
 - produire des datasets exploitables pour analyse  
 
----
-
-##  Problème
 Aujourd’hui, les traitements sont manuels.
 Objectif : automatiser toute la chaîne de traitement avec un pipeline data orchestré.
 
----
-
-## Solution mise en place
+Solution mise en place : 
 Mise en place d’un pipeline de données automatisé avec **Kestra** permettant de :
 - orchestrer les étapes ETL  
 - exécuter des contrôles qualité  
@@ -63,12 +58,12 @@ Projet_10/
 ```
 
 ## Logigramme ETL
-Objectif : structurer le pipeline avant implémentation dans Kestra.
+Le pipeline est structuré comme suit :
+![Logigramme ETL](presentation/projet10_logigramme_script.drawio.png)
 
 
-
-## Justification des choix technologiques
-Kestra : orchestration des workflows (logs, retries, scheduling)
+## Choix technologiques
+Kestra : Kestra est un outil d’orchestration de pipelines de données qui permet de définir, automatiser et monitorer des workflows ETL de manière déclarative via du YAML.
 DuckDB : SQL rapide sur fichiers (Parquet / Excel)
 Python : logique métier et validations
 Docker / Docker Compose : environnement reproductible local
